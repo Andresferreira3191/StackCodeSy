@@ -19,13 +19,15 @@ That's it! VSCode editor is now running in your browser.
 ## 📦 What happens during build?
 
 The Dockerfile automatically:
-1. ✅ Downloads official VSCode server binaries from Microsoft (~150MB)
-2. ✅ Applies StackCodeSy branding to `product.json`
-3. ✅ Installs security scripts
-4. ✅ Builds custom authentication extension
-5. ✅ Configures everything
+1. ✅ Clones VSCode source code from GitHub
+2. ✅ Applies StackCodeSy branding BEFORE compilation
+3. ✅ Compiles vscode-reh-web with custom branding
+4. ✅ Installs security scripts
+5. ✅ Builds custom authentication extension
+6. ✅ Configures everything
 
-**Build time:** ~3-5 minutes (first time only)
+**Build time:** ~40-60 minutes (first time only - compiling from source)
+**Note:** This is normal. VSCode is a large project with 7000+ files.
 
 ## 🔧 Environment Options
 
