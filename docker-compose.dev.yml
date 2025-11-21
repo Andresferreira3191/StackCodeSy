@@ -1,0 +1,109 @@
+# StackCodeSy - Development Environment
+# Full access for development: no restrictions, all features enabled
+
+version: '3.8'
+
+services:
+  stackcodesy-dev:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.build
+      args:
+        VSCODE_VERSION: 1.95.3
+    image: stackcodesy:dev
+    container_name: stackcodesy-dev
+    hostname: stackcodesy-dev
+
+    # Development ports
+    ports:
+      - "8889:8080"  # Web UI
+      - "9229:9229"  # Node.js debugger
+
+    # Development environment variables
+    environment:
+      # Node environment
+      - NODE_ENV=development
+      - HOST=0.0.0.0
+      - PORT=8080
+
+      # Authentication (DISABLED for dev)
+      - STACKCODESY_REQUIRE_AUTH=false
+      - STACKCODESY_USER_ID=dev-user
+      - STACKCODESY_USER_NAME=Developer
+      - STACKCODESY_USER_EMAIL=dev@stackcodesy.local
+
+      # Terminal (FULL ACCESS)
+      - STACKCODESY_TERMINAL_MODE=full
+
+      # Extensions (FULL ACCESS)
+      - STACKCODESY_EXTENSION_MODE=full
+
+      # Filesystem (NO LIMITS)
+      - STACKCODESY_DISK_QUOTA_MB=0  # Unlimited
+      - STACKCODESY_MAX_FILE_SIZE_MB=10000  # 10GB max file
+      - STACKCODESY_ENABLE_FS_MONITORING=false
+
+      # Network (NO RESTRICTIONS)
+      - STACKCODESY_EGRESS_FILTER=false
+      - STACKCODESY_BLOCK_ALL_OUTBOUND=false
+      - STACKCODESY_ENABLE_NETWORK_MONITORING=false
+
+      # Logging (ENABLED but verbose)
+      - STACKCODESY_ENABLE_AUDIT_LOG=true
+      - STACKCODESY_ENABLE_CSP=false  # Disabled for easier debugging
+
+      # Workspace
+      - STACKCODESY_WORKSPACE_DIR=/workspace
+
+    # Development volumes (bind mounts for live editing)
+    volumes:
+      # Workspace (persistent)
+      - ./dev-workspace:/workspace
+
+      # Security scripts (for live editing)
+      - ./resources/server/web/security:/opt/stackcodesy/security:ro
+
+      # Custom extensions (for development)
+      - ./extensions:/opt/stackcodesy/extensions:ro
+
+      # Logs (for debugging)
+      - ./logs/dev:/var/log/stackcodesy
+
+    # No resource limits in dev
+    # deploy:
+    #   resources:
+    #     limits:
+    #       cpus: '4.0'
+    #       memory: 8G
+
+    # Development networks
+    networks:
+      - stackcodesy-dev-network
+
+    # Restart policy
+    restart: unless-stopped
+
+    # Security options (relaxed for dev)
+    security_opt:
+      - seccomp:unconfined
+      - apparmor:unconfined
+
+    # Capabilities (for debugging)
+    cap_add:
+      - SYS_PTRACE  # For debugging
+
+    # Labels
+    labels:
+      com.stackcodesy.environment: "development"
+      com.stackcodesy.version: "1.0.0"
+
+networks:
+  stackcodesy-dev-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+volumes:
+  dev-workspace:
+    driver: local

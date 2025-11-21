@@ -1,0 +1,129 @@
+# StackCodeSy - Staging Environment
+# Moderate security: restricted terminal, whitelisted extensions, limited resources
+
+version: '3.8'
+
+services:
+  stackcodesy-staging:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    image: stackcodesy:staging
+    container_name: stackcodesy-staging
+    hostname: stackcodesy-staging
+
+    # Staging ports
+    ports:
+      - "8889:8080"
+
+    # Staging environment variables
+    environment:
+      # Node environment
+      - NODE_ENV=staging
+      - HOST=0.0.0.0
+      - PORT=8080
+
+      # Authentication (REQUIRED)
+      - STACKCODESY_REQUIRE_AUTH=true
+      - STACKCODESY_USER_ID=${STACKCODESY_USER_ID}
+      - STACKCODESY_USER_NAME=${STACKCODESY_USER_NAME}
+      - STACKCODESY_USER_EMAIL=${STACKCODESY_USER_EMAIL}
+      - STACKCODESY_AUTH_TOKEN=${STACKCODESY_AUTH_TOKEN}
+      - STACKCODESY_AUTH_API=${STACKCODESY_AUTH_API}
+
+      # Terminal (RESTRICTED)
+      - STACKCODESY_TERMINAL_MODE=restricted
+      - STACKCODESY_TERMINAL_ALLOWED_COMMANDS=ls,cd,pwd,cat,echo,mkdir,rm,cp,mv,touch,git,node,npm,yarn,python,python3,pip
+
+      # Extensions (WHITELIST)
+      - STACKCODESY_EXTENSION_MODE=whitelist
+      - STACKCODESY_EXTENSION_WHITELIST=dbaeumer.vscode-eslint,esbenp.prettier-vscode,ms-python.python,ms-vscode.vscode-typescript-next,github.copilot
+
+      # Filesystem (LIMITED)
+      - STACKCODESY_DISK_QUOTA_MB=10240  # 10GB per user
+      - STACKCODESY_MAX_FILE_SIZE_MB=1000  # 1GB max file
+      - STACKCODESY_BLOCK_FILE_TYPES=.exe,.dll,.so,.dylib,.bin,.elf,.msi
+      - STACKCODESY_ENABLE_FS_MONITORING=true
+
+      # Network (FILTERED)
+      - STACKCODESY_EGRESS_FILTER=true
+      - STACKCODESY_ALLOWED_DOMAINS=registry.npmjs.org,github.com,api.github.com,raw.githubusercontent.com,pypi.org,files.pythonhosted.org
+      - STACKCODESY_ALLOWED_PORTS=80,443
+      - STACKCODESY_ENABLE_NETWORK_MONITORING=true
+
+      # Logging (ENABLED)
+      - STACKCODESY_ENABLE_AUDIT_LOG=true
+      - STACKCODESY_ENABLE_CSP=true
+
+      # Workspace
+      - STACKCODESY_WORKSPACE_DIR=/workspace
+
+    # Staging volumes (named volumes for isolation)
+    volumes:
+      # Workspace (persistent per user)
+      - staging-workspace:/workspace
+
+      # Logs (for monitoring)
+      - ./logs/staging:/var/log/stackcodesy
+
+    # Resource limits (moderate)
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 4G
+          pids: 200
+        reservations:
+          cpus: '0.5'
+          memory: 1G
+
+    # Ulimits
+    ulimits:
+      nproc: 200
+      nofile:
+        soft: 2048
+        hard: 4096
+
+    # Staging network
+    networks:
+      - stackcodesy-staging-network
+
+    # Restart policy
+    restart: on-failure:3
+
+    # Security options
+    security_opt:
+      - no-new-privileges:true
+      - seccomp=/etc/docker/seccomp-profiles/stackcodesy.json
+
+    # Drop dangerous capabilities
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+      - CHOWN
+      - SETUID
+      - SETGID
+      - DAC_OVERRIDE
+
+    # Read-only root filesystem (except specific mounts)
+    read_only: false  # Set to true if possible, requires careful volume setup
+
+    # Labels
+    labels:
+      com.stackcodesy.environment: "staging"
+      com.stackcodesy.version: "1.0.0"
+      com.stackcodesy.user_id: "${STACKCODESY_USER_ID}"
+
+networks:
+  stackcodesy-staging-network:
+    driver: bridge
+    internal: false  # Allow external access through proxy
+
+volumes:
+  staging-workspace:
+    driver: local
+    driver_opts:
+      type: tmpfs
+      device: tmpfs
+      o: size=10G,uid=1000,gid=1000
