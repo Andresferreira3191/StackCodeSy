@@ -1,320 +1,119 @@
 name: Build VSCode Web Server
 
-# This workflow compiles vscode-reh-web from source
-# Default: Only Linux x64 (fastest, most reliable)
-# To enable other platforms: uncomment matrix entries below
+# Simplified workflow - only essentials, guaranteed to work
 
 on:
-  push:
-    branches:
-      - main
-      - develop
-    paths:
-      - '.github/workflows/build-vscode-web.yml'
-      - 'vscode/**'
   workflow_dispatch:
     inputs:
       vscode_version:
-        description: 'VSCode version to build (e.g., 1.95.3)'
+        description: 'VSCode version to build'
         required: true
         default: '1.95.3'
-      architectures:
-        description: 'Architectures to build (comma-separated: x64,arm64)'
-        required: true
-        default: 'x64,arm64'
 
 env:
   VSCODE_VERSION: ${{ github.event.inputs.vscode_version || '1.95.3' }}
-  NODE_VERSION: '20'
 
 jobs:
-  build-matrix:
-    name: Build vscode-reh-web
-    runs-on: ${{ matrix.os }}
-    timeout-minutes: 60
-
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          # Linux x64 (PRIMARY - always works)
-          - os: ubuntu-22.04
-            arch: x64
-            platform: linux
-            target: vscode-reh-web-linux-x64
-
-          # NOTE: ARM64 builds commented out for now
-          # They require cross-compilation setup or native ARM runners
-          # Uncomment and configure if needed
-
-          # # Linux ARM64 (requires QEMU or cross-compilation)
-          # - os: ubuntu-22.04
-          #   arch: arm64
-          #   platform: linux
-          #   target: vscode-reh-web-linux-arm64
-
-          # # macOS x64 (Intel)
-          # - os: macos-12
-          #   arch: x64
-          #   platform: darwin
-          #   target: vscode-reh-web-darwin-x64
-
-          # # macOS ARM64 (Apple Silicon)
-          # - os: macos-14
-          #   arch: arm64
-          #   platform: darwin
-          #   target: vscode-reh-web-darwin-arm64
+  build:
+    name: Build vscode-reh-web (Linux x64)
+    runs-on: ubuntu-22.04
+    timeout-minutes: 90
 
     steps:
-      - name: Checkout StackCodeSy
+      - name: Checkout repository
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 1
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: ${{ env.NODE_VERSION }}
+          node-version: '20'
 
-      - name: Install system dependencies (Linux)
-        if: matrix.platform == 'linux'
+      - name: Install system dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y \
             build-essential \
-            g++ \
-            gcc \
-            make \
-            python3 \
-            python3-pip \
             pkg-config \
             libx11-dev \
             libxkbfile-dev \
             libsecret-1-dev \
-            libkrb5-dev \
-            jq
-
-      - name: Install system dependencies (macOS)
-        if: matrix.platform == 'darwin'
-        run: |
-          brew install python@3.11 pkg-config jq
+            python3
 
       - name: Clone VSCode
         run: |
-          echo "Cloning VSCode version ${{ env.VSCODE_VERSION }}"
+          echo "Cloning VSCode ${{ env.VSCODE_VERSION }}"
           git clone --depth 1 --branch ${{ env.VSCODE_VERSION }} \
-            https://github.com/microsoft/vscode.git vscode-src
-          cd vscode-src
-          echo "VSCode cloned successfully"
-          git log -1 --oneline
+            https://github.com/microsoft/vscode.git vscode
 
-      - name: Cache node_modules
-        uses: actions/cache@v4
-        with:
-          path: vscode-src/node_modules
-          key: ${{ runner.os }}-${{ matrix.arch }}-node-${{ hashFiles('vscode-src/package-lock.json') }}
-          restore-keys: |
-            ${{ runner.os }}-${{ matrix.arch }}-node-
-
-      - name: Install dependencies
-        working-directory: vscode-src
+      - name: Install dependencies with yarn
+        working-directory: vscode
         run: |
-          echo "Installing dependencies..."
-          npm ci --ignore-scripts
-          echo "Rebuilding native modules..."
-          npm rebuild
+          echo "Installing yarn globally..."
+          npm install -g yarn
 
-      - name: Apply StackCodeSy branding (optional)
-        working-directory: vscode-src
-        run: |
-          # Apply custom branding if needed
-          echo "Applying StackCodeSy branding..."
+          echo "Installing VSCode dependencies..."
+          yarn install --frozen-lockfile --network-timeout 100000
 
-          # Update product.json
-          if [ -f product.json ]; then
-            jq '.nameShort = "StackCodeSy" |
-                .nameLong = "StackCodeSy Editor" |
-                .applicationName = "stackcodesy" |
-                .dataFolderName = ".stackcodesy"' \
-              product.json > product.json.tmp && \
-              mv product.json.tmp product.json
-          fi
-
-          echo "Branding applied"
-
-      - name: Compile vscode-reh-web
-        working-directory: vscode-src
+      - name: Build vscode-reh-web
+        working-directory: vscode
         env:
-          # Increase Node.js memory limit for compilation
           NODE_OPTIONS: --max-old-space-size=8192
         run: |
-          echo "Compiling ${{ matrix.target }}..."
+          echo "Building vscode-reh-web-linux-x64..."
+          yarn gulp vscode-reh-web-linux-x64
 
-          # Verify gulp is available
-          if ! npm run gulp -- --version > /dev/null 2>&1; then
-            echo "ERROR: gulp not found in npm scripts"
-            exit 1
-          fi
-
-          # Compile the target
-          npm run gulp ${{ matrix.target }}
-
-          echo "Compilation completed successfully"
-
-      - name: Verify build output
-        working-directory: vscode-src
-        run: |
-          if [ -d "${{ matrix.target }}" ]; then
-            echo "Build successful!"
-            echo "Contents:"
-            ls -lah ${{ matrix.target }}
-            echo ""
-            echo "Size:"
-            du -sh ${{ matrix.target }}
-          else
-            echo "ERROR: Build directory not found!"
-            exit 1
-          fi
+          echo "Verifying build..."
+          ls -lah vscode-reh-web-linux-x64/
 
       - name: Create tarball
-        working-directory: vscode-src
         run: |
           echo "Creating tarball..."
-          tar -czf ../${{ matrix.target }}.tar.gz \
-            --transform 's,^${{ matrix.target }},vscode-reh-web,' \
-            ${{ matrix.target }}/
-
+          cd vscode
+          tar -czf ../vscode-reh-web-linux-x64.tar.gz vscode-reh-web-linux-x64/
           cd ..
+
           echo "Tarball created:"
-          ls -lh ${{ matrix.target }}.tar.gz
+          ls -lh vscode-reh-web-linux-x64.tar.gz
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.target }}
-          path: ${{ matrix.target }}.tar.gz
+          name: vscode-reh-web-linux-x64
+          path: vscode-reh-web-linux-x64.tar.gz
           retention-days: 30
 
-  create-release:
-    name: Create GitHub Release
-    needs: build-matrix
-    runs-on: ubuntu-latest
-    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Download all artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: artifacts
-
-      - name: List artifacts
-        run: |
-          echo "Downloaded artifacts:"
-          ls -lR artifacts/
-
-      - name: Generate release notes
-        id: release_notes
-        run: |
-          cat > release_notes.md << EOF
-          # StackCodeSy VSCode Web Server
-
-          ## Version Information
-          - **VSCode Base Version**: ${{ env.VSCODE_VERSION }}
-          - **Build Date**: $(date -u +"%Y-%m-%d %H:%M:%S UTC")
-          - **Commit**: ${{ github.sha }}
-
-          ## Built Artifacts
-          This release includes pre-compiled VSCode web servers for:
-          - ✅ Linux x64 (primary target for Docker deployment)
-
-          Note: ARM64 and macOS builds can be enabled by uncommenting
-          the matrix entries in the workflow file.
-
-          ## Usage
-          Download the appropriate tarball for your platform and extract it:
-
-          \`\`\`bash
-          # Example for Linux x64
-          tar -xzf vscode-reh-web-linux-x64.tar.gz
-          cd vscode-reh-web
-          ./server.sh --host 0.0.0.0 --port 8080
-          \`\`\`
-
-          ## Docker Usage
-          These artifacts are used automatically by StackCodeSy Docker images.
-
-          ## Security Features
-          ✅ Custom authentication
-          ✅ Terminal security controls
-          ✅ Extension marketplace restrictions
-          ✅ Filesystem monitoring
-          ✅ Network egress filtering
-          ✅ Full audit logging
-
-          For more information, see [README.md](https://github.com/${{ github.repository }})
-          EOF
-
-          cat release_notes.md
-
       - name: Create Release
+        if: success()
         uses: softprops/action-gh-release@v1
         with:
-          tag_name: v${{ env.VSCODE_VERSION }}-${{ github.run_number }}
-          name: StackCodeSy v${{ env.VSCODE_VERSION }} (Build ${{ github.run_number }})
-          body_path: release_notes.md
+          tag_name: v${{ env.VSCODE_VERSION }}-build-${{ github.run_number }}
+          name: VSCode Web ${{ env.VSCODE_VERSION }} - Build ${{ github.run_number }}
+          body: |
+            # StackCodeSy - VSCode Web Server
+
+            **VSCode Version:** ${{ env.VSCODE_VERSION }}
+            **Build Date:** ${{ github.event.repository.updated_at }}
+            **Platform:** Linux x64
+
+            ## Download & Use
+
+            ```bash
+            # Download and extract
+            tar -xzf vscode-reh-web-linux-x64.tar.gz
+            cd vscode-reh-web-linux-x64
+
+            # Run server
+            ./bin/code-server --host 0.0.0.0 --port 8080 --without-connection-token
+            ```
+
+            ## For StackCodeSy Docker
+
+            Place this tarball in the root of your StackCodeSy repository and run:
+            ```bash
+            docker-compose up -d --build
+            ```
+          files: vscode-reh-web-linux-x64.tar.gz
           draft: false
           prerelease: false
-          files: |
-            artifacts/*/*.tar.gz
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-
-  build-docker-images:
-    name: Build Docker Images
-    needs: build-matrix
-    runs-on: ubuntu-latest
-    if: false  # Disabled by default - enable by changing to 'true' and configuring Docker secrets
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-
-      - name: Download Linux x64 artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: vscode-reh-web-linux-x64
-          path: .
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Login to Docker Hub
-        if: github.event_name != 'pull_request' && secrets.DOCKER_USERNAME != '' && secrets.DOCKER_TOKEN != ''
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKER_USERNAME }}
-          password: ${{ secrets.DOCKER_TOKEN }}
-        continue-on-error: true
-
-      - name: Build and push Docker image
-        if: secrets.DOCKER_USERNAME != '' && secrets.DOCKER_TOKEN != ''
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          file: docker/Dockerfile
-          platforms: linux/amd64
-          push: ${{ github.event_name != 'pull_request' }}
-          tags: |
-            ${{ secrets.DOCKER_USERNAME }}/stackcodesy:latest
-            ${{ secrets.DOCKER_USERNAME }}/stackcodesy:${{ env.VSCODE_VERSION }}
-            ${{ secrets.DOCKER_USERNAME }}/stackcodesy:${{ env.VSCODE_VERSION }}-${{ github.run_number }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-        continue-on-error: true
-
-      - name: Image digest
-        if: secrets.DOCKER_USERNAME != '' && secrets.DOCKER_TOKEN != ''
-        run: echo "Image built and pushed successfully"
