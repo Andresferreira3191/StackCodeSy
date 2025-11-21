@@ -1,0 +1,299 @@
+name: Build VSCode Web Server
+
+on:
+  push:
+    branches:
+      - main
+      - develop
+    paths:
+      - '.github/workflows/build-vscode-web.yml'
+      - 'vscode/**'
+  workflow_dispatch:
+    inputs:
+      vscode_version:
+        description: 'VSCode version to build (e.g., 1.95.3)'
+        required: true
+        default: '1.95.3'
+      architectures:
+        description: 'Architectures to build (comma-separated: x64,arm64)'
+        required: true
+        default: 'x64,arm64'
+
+env:
+  VSCODE_VERSION: ${{ github.event.inputs.vscode_version || '1.95.3' }}
+  NODE_VERSION: '20'
+
+jobs:
+  build-matrix:
+    name: Build vscode-reh-web
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # Linux x64
+          - os: ubuntu-22.04
+            arch: x64
+            platform: linux
+            target: vscode-reh-web-linux-x64
+
+          # Linux ARM64
+          - os: ubuntu-22.04
+            arch: arm64
+            platform: linux
+            target: vscode-reh-web-linux-arm64
+
+          # macOS x64 (Intel)
+          - os: macos-12
+            arch: x64
+            platform: darwin
+            target: vscode-reh-web-darwin-x64
+
+          # macOS ARM64 (Apple Silicon)
+          - os: macos-14
+            arch: arm64
+            platform: darwin
+            target: vscode-reh-web-darwin-arm64
+
+    steps:
+      - name: Checkout StackCodeSy
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install system dependencies (Linux)
+        if: matrix.platform == 'linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            g++ \
+            gcc \
+            make \
+            python3 \
+            python3-pip \
+            pkg-config \
+            libx11-dev \
+            libxkbfile-dev \
+            libsecret-1-dev \
+            libkrb5-dev \
+            jq
+
+      - name: Install system dependencies (macOS)
+        if: matrix.platform == 'darwin'
+        run: |
+          brew install python@3.11 pkg-config jq
+
+      - name: Clone VSCode
+        run: |
+          echo "Cloning VSCode version ${{ env.VSCODE_VERSION }}"
+          git clone --depth 1 --branch ${{ env.VSCODE_VERSION }} \
+            https://github.com/microsoft/vscode.git vscode-src
+          cd vscode-src
+          echo "VSCode cloned successfully"
+          git log -1 --oneline
+
+      - name: Cache node_modules
+        uses: actions/cache@v4
+        with:
+          path: vscode-src/node_modules
+          key: ${{ runner.os }}-${{ matrix.arch }}-node-${{ hashFiles('vscode-src/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-${{ matrix.arch }}-node-
+
+      - name: Install dependencies
+        working-directory: vscode-src
+        run: |
+          echo "Installing dependencies..."
+          npm ci --ignore-scripts
+          echo "Rebuilding native modules..."
+          npm rebuild
+
+      - name: Apply StackCodeSy branding (optional)
+        working-directory: vscode-src
+        run: |
+          # Apply custom branding if needed
+          echo "Applying StackCodeSy branding..."
+
+          # Update product.json
+          if [ -f product.json ]; then
+            jq '.nameShort = "StackCodeSy" |
+                .nameLong = "StackCodeSy Editor" |
+                .applicationName = "stackcodesy" |
+                .dataFolderName = ".stackcodesy"' \
+              product.json > product.json.tmp && \
+              mv product.json.tmp product.json
+          fi
+
+          echo "Branding applied"
+
+      - name: Compile vscode-reh-web
+        working-directory: vscode-src
+        env:
+          # Increase Node.js memory limit for compilation
+          NODE_OPTIONS: --max-old-space-size=8192
+        run: |
+          echo "Compiling ${{ matrix.target }}..."
+          npm run gulp ${{ matrix.target }}
+          echo "Compilation completed"
+
+      - name: Verify build output
+        working-directory: vscode-src
+        run: |
+          if [ -d "${{ matrix.target }}" ]; then
+            echo "Build successful!"
+            echo "Contents:"
+            ls -lah ${{ matrix.target }}
+            echo ""
+            echo "Size:"
+            du -sh ${{ matrix.target }}
+          else
+            echo "ERROR: Build directory not found!"
+            exit 1
+          fi
+
+      - name: Create tarball
+        working-directory: vscode-src
+        run: |
+          echo "Creating tarball..."
+          tar -czf ../${{ matrix.target }}.tar.gz \
+            --transform 's,^${{ matrix.target }},vscode-reh-web,' \
+            ${{ matrix.target }}/
+
+          cd ..
+          echo "Tarball created:"
+          ls -lh ${{ matrix.target }}.tar.gz
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.target }}
+          path: ${{ matrix.target }}.tar.gz
+          retention-days: 30
+
+  create-release:
+    name: Create GitHub Release
+    needs: build-matrix
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: List artifacts
+        run: |
+          echo "Downloaded artifacts:"
+          ls -lR artifacts/
+
+      - name: Generate release notes
+        id: release_notes
+        run: |
+          cat > release_notes.md << EOF
+          # StackCodeSy VSCode Web Server
+
+          ## Version Information
+          - **VSCode Base Version**: ${{ env.VSCODE_VERSION }}
+          - **Build Date**: $(date -u +"%Y-%m-%d %H:%M:%S UTC")
+          - **Commit**: ${{ github.sha }}
+
+          ## Built Artifacts
+          This release includes pre-compiled VSCode web servers for:
+          - Linux x64
+          - Linux ARM64
+          - macOS x64 (Intel)
+          - macOS ARM64 (Apple Silicon)
+
+          ## Usage
+          Download the appropriate tarball for your platform and extract it:
+
+          \`\`\`bash
+          # Example for Linux x64
+          tar -xzf vscode-reh-web-linux-x64.tar.gz
+          cd vscode-reh-web
+          ./server.sh --host 0.0.0.0 --port 8080
+          \`\`\`
+
+          ## Docker Usage
+          These artifacts are used automatically by StackCodeSy Docker images.
+
+          ## Security Features
+          ✅ Custom authentication
+          ✅ Terminal security controls
+          ✅ Extension marketplace restrictions
+          ✅ Filesystem monitoring
+          ✅ Network egress filtering
+          ✅ Full audit logging
+
+          For more information, see [README.md](https://github.com/${{ github.repository }})
+          EOF
+
+          cat release_notes.md
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v${{ env.VSCODE_VERSION }}-${{ github.run_number }}
+          name: StackCodeSy v${{ env.VSCODE_VERSION }} (Build ${{ github.run_number }})
+          body_path: release_notes.md
+          draft: false
+          prerelease: false
+          files: |
+            artifacts/*/*.tar.gz
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  build-docker-images:
+    name: Build Docker Images
+    needs: build-matrix
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download Linux x64 artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: vscode-reh-web-linux-x64
+          path: .
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Docker Hub
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_TOKEN }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: docker/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: |
+            ${{ secrets.DOCKER_USERNAME }}/stackcodesy:latest
+            ${{ secrets.DOCKER_USERNAME }}/stackcodesy:${{ env.VSCODE_VERSION }}
+            ${{ secrets.DOCKER_USERNAME }}/stackcodesy:${{ env.VSCODE_VERSION }}-${{ github.run_number }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Image digest
+        run: echo "Image built and pushed successfully"

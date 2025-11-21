@@ -1,0 +1,176 @@
+# StackCodeSy - Production Environment
+# Maximum security: terminal disabled, strict whitelist, full isolation
+
+version: '3.8'
+
+services:
+  stackcodesy-prod:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+    image: stackcodesy:prod
+    container_name: stackcodesy-prod-${STACKCODESY_USER_ID}
+    hostname: stackcodesy-prod
+
+    # Production ports (internal only, use reverse proxy)
+    ports:
+      - "127.0.0.1:8080:8080"  # Only localhost access
+
+    # Production environment variables
+    environment:
+      # Node environment
+      - NODE_ENV=production
+      - HOST=0.0.0.0
+      - PORT=8080
+
+      # Authentication (STRICTLY REQUIRED)
+      - STACKCODESY_REQUIRE_AUTH=true
+      - STACKCODESY_USER_ID=${STACKCODESY_USER_ID}
+      - STACKCODESY_USER_NAME=${STACKCODESY_USER_NAME}
+      - STACKCODESY_USER_EMAIL=${STACKCODESY_USER_EMAIL}
+      - STACKCODESY_AUTH_TOKEN=${STACKCODESY_AUTH_TOKEN}
+      - STACKCODESY_AUTH_API=${STACKCODESY_AUTH_API}
+
+      # Terminal (DISABLED)
+      - STACKCODESY_TERMINAL_MODE=disabled
+
+      # Extensions (STRICT WHITELIST)
+      - STACKCODESY_EXTENSION_MODE=whitelist
+      - STACKCODESY_EXTENSION_WHITELIST=dbaeumer.vscode-eslint,esbenp.prettier-vscode,ms-python.python
+
+      # Filesystem (STRICT LIMITS)
+      - STACKCODESY_DISK_QUOTA_MB=5120  # 5GB per user
+      - STACKCODESY_MAX_FILE_SIZE_MB=500  # 500MB max file
+      - STACKCODESY_BLOCK_FILE_TYPES=.exe,.dll,.so,.dylib,.bin,.elf,.msi,.app,.sh,.bash,.bat,.cmd,.ps1
+      - STACKCODESY_ENABLE_FS_MONITORING=true
+
+      # Network (MAXIMUM RESTRICTION)
+      - STACKCODESY_EGRESS_FILTER=true
+      - STACKCODESY_BLOCK_ALL_OUTBOUND=true  # No external connections
+      - STACKCODESY_ENABLE_NETWORK_MONITORING=true
+
+      # Logging (FULL AUDIT)
+      - STACKCODESY_ENABLE_AUDIT_LOG=true
+      - STACKCODESY_ENABLE_CSP=true
+
+      # Workspace
+      - STACKCODESY_WORKSPACE_DIR=/workspace
+
+      # Session tracking
+      - STACKCODESY_SESSION_ID=${STACKCODESY_SESSION_ID:-$(uuidgen)}
+
+    # Production volumes (isolated per user)
+    volumes:
+      # Workspace (ephemeral or persistent based on setup)
+      - prod-workspace-${STACKCODESY_USER_ID}:/workspace
+
+      # Logs (write-only for container)
+      - ./logs/prod:/var/log/stackcodesy:rw
+
+      # Secrets (read-only)
+      - /run/secrets:/run/secrets:ro
+
+    # Strict resource limits
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 2G
+          pids: 100
+        reservations:
+          cpus: '0.25'
+          memory: 512M
+
+      # Restart policy
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 3
+        window: 120s
+
+    # Strict ulimits
+    ulimits:
+      nproc: 100
+      nofile:
+        soft: 1024
+        hard: 2048
+      cpu: 60  # Max CPU time
+      fsize: 524288000  # Max file size (500MB)
+
+    # Production network (internal)
+    networks:
+      stackcodesy-prod-internal:
+        aliases:
+          - editor-${STACKCODESY_USER_ID}
+
+    # Restart policy
+    restart: on-failure:3
+
+    # Maximum security options
+    security_opt:
+      - no-new-privileges:true
+      - seccomp=/etc/docker/seccomp-profiles/stackcodesy-strict.json
+      - apparmor=stackcodesy-prod-profile
+
+    # Drop ALL capabilities, add only essential ones
+    cap_drop:
+      - ALL
+    cap_add:
+      - CHOWN
+      - SETUID
+      - SETGID
+
+    # Read-only root filesystem with tmpfs for necessary writes
+    read_only: true
+    tmpfs:
+      - /tmp:size=512M,mode=1777,noexec,nosuid,nodev
+      - /var/tmp:size=256M,mode=1777,noexec,nosuid,nodev
+      - /home/stackcodesy/.stackcodesy:size=100M,mode=0755,uid=1000,gid=1000
+
+    # Additional hardening
+    privileged: false
+    stdin_open: false
+    tty: false
+
+    # Labels
+    labels:
+      com.stackcodesy.environment: "production"
+      com.stackcodesy.version: "1.0.0"
+      com.stackcodesy.user_id: "${STACKCODESY_USER_ID}"
+      com.stackcodesy.session_id: "${STACKCODESY_SESSION_ID}"
+      com.stackcodesy.security_level: "maximum"
+
+    # Logging configuration
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+        labels: "com.stackcodesy.user_id,com.stackcodesy.session_id"
+
+networks:
+  stackcodesy-prod-internal:
+    driver: bridge
+    internal: true  # No direct external access
+    ipam:
+      config:
+        - subnet: 172.30.0.0/16
+
+  # External network for reverse proxy only
+  stackcodesy-prod-external:
+    external: true
+
+volumes:
+  prod-workspace-${STACKCODESY_USER_ID}:
+    driver: local
+    driver_opts:
+      type: tmpfs
+      device: tmpfs
+      o: size=5G,uid=1000,gid=1000,mode=0755
+
+# Docker secrets (use with Docker Swarm or external secret manager)
+secrets:
+  stackcodesy_auth_api:
+    external: true
+  stackcodesy_db_password:
+    external: true

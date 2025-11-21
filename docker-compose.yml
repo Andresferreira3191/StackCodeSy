@@ -1,0 +1,67 @@
+# StackCodeSy - Default/Local Testing Environment
+# Quick start for local testing and development
+
+version: '3.8'
+
+services:
+  stackcodesy:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.build
+    image: stackcodesy:latest
+    container_name: stackcodesy-local
+    hostname: stackcodesy
+
+    ports:
+      - "8889:8080"
+
+    environment:
+      # Basic configuration
+      - NODE_ENV=development
+      - HOST=0.0.0.0
+      - PORT=8080
+
+      # Minimal auth for testing
+      - STACKCODESY_REQUIRE_AUTH=false
+      - STACKCODESY_USER_ID=test-user
+      - STACKCODESY_USER_EMAIL=test@stackcodesy.local
+
+      # Relaxed security for local testing
+      - STACKCODESY_TERMINAL_MODE=full
+      - STACKCODESY_EXTENSION_MODE=full
+      - STACKCODESY_DISK_QUOTA_MB=0
+      - STACKCODESY_EGRESS_FILTER=false
+      - STACKCODESY_ENABLE_AUDIT_LOG=true
+
+    volumes:
+      - ./workspace:/workspace
+      - ./logs:/var/log/stackcodesy
+
+    networks:
+      - stackcodesy-network
+
+    restart: unless-stopped
+
+    labels:
+      com.stackcodesy.environment: "local"
+
+networks:
+  stackcodesy-network:
+    driver: bridge
+
+# Quick start instructions:
+#
+# 1. Build and start:
+#    docker-compose up -d --build
+#
+# 2. View logs:
+#    docker-compose logs -f
+#
+# 3. Access editor:
+#    http://localhost:8889
+#
+# 4. Stop:
+#    docker-compose down
+#
+# For production, use:
+#    docker-compose -f docker-compose.prod.yml up -d
