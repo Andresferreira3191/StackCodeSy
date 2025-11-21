@@ -45,14 +45,11 @@ jobs:
           git clone --depth 1 --branch ${{ env.VSCODE_VERSION }} \
             https://github.com/microsoft/vscode.git vscode
 
-      - name: Install dependencies with yarn
+      - name: Install dependencies
         working-directory: vscode
         run: |
-          echo "Installing yarn globally..."
-          npm install -g yarn
-
           echo "Installing VSCode dependencies..."
-          yarn install --frozen-lockfile --network-timeout 100000
+          npm ci
 
       - name: Build vscode-reh-web
         working-directory: vscode
@@ -60,7 +57,7 @@ jobs:
           NODE_OPTIONS: --max-old-space-size=8192
         run: |
           echo "Building vscode-reh-web-linux-x64..."
-          yarn gulp vscode-reh-web-linux-x64
+          npm run gulp vscode-reh-web-linux-x64
 
           echo "Verifying build..."
           ls -lah vscode-reh-web-linux-x64/
