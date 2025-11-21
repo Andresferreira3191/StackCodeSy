@@ -1,191 +1,189 @@
-# StackCodeSy - Secure VSCode Web Editor
-# Downloads official VSCode server and applies StackCodeSy customizations
+# StackCodeSy - Build VSCode from source with full customization
+# This compiles VSCode from scratch with StackCodeSy branding
 
-FROM node:20-bookworm-slim AS base
+FROM node:20-bookworm AS builder
 
 # ============================================================================
 # Build arguments
 # ============================================================================
 ARG VSCODE_VERSION=1.95.3
-ARG VSCODE_QUALITY=stable
 
 # ============================================================================
-# Install runtime and build dependencies
+# Install build dependencies
 # ============================================================================
 RUN apt-get update && apt-get install -y \
-    # Core utilities
+    build-essential \
+    g++ \
+    gcc \
+    make \
+    python3 \
+    python3-pip \
+    pkg-config \
+    libx11-dev \
+    libxkbfile-dev \
+    libsecret-1-dev \
+    libkrb5-dev \
+    git \
+    jq \
+    && rm -rf /var/lib/apt/lists/*
+
+# ============================================================================
+# Clone VSCode source
+# ============================================================================
+WORKDIR /build
+
+RUN echo "Cloning VSCode ${VSCODE_VERSION}..." && \
+    git clone --depth 1 --branch ${VSCODE_VERSION} \
+    https://github.com/microsoft/vscode.git vscode && \
+    cd vscode && \
+    echo "VSCode cloned successfully" && \
+    git log -1 --oneline
+
+WORKDIR /build/vscode
+
+# ============================================================================
+# Apply StackCodeSy branding BEFORE compilation
+# ============================================================================
+RUN echo "Applying StackCodeSy branding..." && \
+    # Backup original
+    cp product.json product.json.original && \
+    # Apply branding
+    jq '. + {
+        "nameShort": "StackCodeSy",
+        "nameLong": "StackCodeSy Editor",
+        "applicationName": "stackcodesy",
+        "dataFolderName": ".stackcodesy",
+        "serverDataFolderName": ".stackcodesy-server",
+        "darwinBundleIdentifier": "com.stackcodesy.editor",
+        "linuxIconName": "stackcodesy",
+        "reportIssueUrl": "https://github.com/yourorg/stackcodesy/issues",
+        "documentationUrl": "https://docs.stackcodesy.com",
+        "requestFeatureUrl": "https://github.com/yourorg/stackcodesy/issues/new"
+    }' product.json > product.json.tmp && \
+    mv product.json.tmp product.json && \
+    echo "✅ Branding applied to product.json" && \
+    # Also update package.json
+    if [ -f package.json ]; then \
+        jq '.displayName = "StackCodeSy" |
+            .name = "stackcodesy" |
+            .description = "StackCodeSy - Secure Code Editor"' \
+            package.json > package.json.tmp && \
+        mv package.json.tmp package.json && \
+        echo "✅ Branding applied to package.json"; \
+    fi
+
+# Create custom welcome content
+RUN mkdir -p src/vs/workbench/contrib/welcome/page/browser && \
+    cat > src/vs/workbench/contrib/welcome/page/browser/stackcodesy-welcome.ts << 'EOF'
+/*---------------------------------------------------------------------------------------------
+ *  StackCodeSy Custom Welcome Content
+ *--------------------------------------------------------------------------------------------*/
+
+export const stackcodesyWelcomeContent = `
+# Welcome to StackCodeSy
+
+Your secure, enterprise-grade code editor.
+
+## Features
+- 🔒 Multi-layer security
+- 🌐 Web-based access
+- 🔐 Custom authentication
+- ⚡ Full VSCode power
+
+Powered by VSCode | Secured by StackCodeSy
+`;
+EOF
+
+# ============================================================================
+# Install dependencies
+# ============================================================================
+RUN echo "Installing dependencies..." && \
+    npm ci && \
+    echo "✅ Dependencies installed"
+
+# ============================================================================
+# Compile vscode-reh-web (Remote Extension Host for Web)
+# ============================================================================
+ENV NODE_OPTIONS="--max-old-space-size=8192"
+
+RUN echo "Starting compilation of vscode-reh-web-linux-x64..." && \
+    echo "This will take 30-50 minutes..." && \
+    npm run gulp vscode-reh-web-linux-x64 && \
+    echo "✅ Compilation completed successfully"
+
+# Verify build output
+RUN if [ -d "vscode-reh-web-linux-x64" ]; then \
+        echo "✅ Build successful!"; \
+        echo "Size: $(du -sh vscode-reh-web-linux-x64 | cut -f1)"; \
+        ls -lah vscode-reh-web-linux-x64/; \
+    else \
+        echo "❌ ERROR: Build directory not found!"; \
+        exit 1; \
+    fi
+
+# ============================================================================
+# Stage 2: Runtime
+# ============================================================================
+FROM node:20-bookworm-slim AS runtime
+
+LABEL maintainer="StackCodeSy Team"
+LABEL description="StackCodeSy - Secure VSCode Web Editor (compiled from source)"
+LABEL version="1.0.0"
+
+# Install runtime dependencies only
+RUN apt-get update && apt-get install -y \
     ca-certificates \
     curl \
     wget \
     git \
     jq \
-    # Security tools
     inotify-tools \
     iptables \
     net-tools \
-    # Process management
     supervisor \
-    # Text editors
     nano \
     vim \
-    # Cleanup
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
 
-# ============================================================================
-# Download official VSCode server
-# ============================================================================
-WORKDIR /tmp
-
-RUN echo "Downloading VSCode Server ${VSCODE_VERSION}..." && \
-    DOWNLOAD_URL="https://update.code.visualstudio.com/${VSCODE_VERSION}/server-linux-x64/${VSCODE_QUALITY}" && \
-    echo "URL: ${DOWNLOAD_URL}" && \
-    curl -fsSL "${DOWNLOAD_URL}" -o vscode-server.tar.gz && \
-    echo "Download completed: $(ls -lh vscode-server.tar.gz | awk '{print $5}')" && \
-    \
-    echo "Extracting..." && \
-    mkdir -p /opt/vscode-server && \
-    tar -xzf vscode-server.tar.gz -C /opt/vscode-server --strip-components=1 && \
-    rm vscode-server.tar.gz && \
-    \
-    echo "VSCode Server installed successfully" && \
-    ls -lah /opt/vscode-server/
-
-# ============================================================================
-# Apply StackCodeSy branding and customizations
-# ============================================================================
-WORKDIR /opt/vscode-server
-
-# Modify product.json for branding
-RUN if [ -f product.json ]; then \
-        echo "Applying StackCodeSy branding to product.json..." && \
-        cp product.json product.json.original && \
-        jq '. + {
-            "nameShort": "StackCodeSy",
-            "nameLong": "StackCodeSy Editor",
-            "applicationName": "stackcodesy",
-            "dataFolderName": ".stackcodesy",
-            "serverDataFolderName": ".stackcodesy-server",
-            "quality": "stable",
-            "extensionsGallery": {
-                "serviceUrl": "https://marketplace.visualstudio.com/_apis/public/gallery",
-                "itemUrl": "https://marketplace.visualstudio.com/items",
-                "controlUrl": "",
-                "recommendationsUrl": ""
-            }
-        }' product.json > product.json.tmp && \
-        mv product.json.tmp product.json && \
-        echo "Branding applied successfully"; \
-    else \
-        echo "Warning: product.json not found, skipping branding"; \
-    fi
-
-# Create custom welcome/getting started content
-RUN mkdir -p /opt/vscode-server/resources/app/out/vs/code/browser/workbench && \
-    cat > /opt/vscode-server/welcome.html << 'EOF'
-<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="UTF-8">
-    <title>Welcome to StackCodeSy</title>
-    <style>
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-            max-width: 800px;
-            margin: 50px auto;
-            padding: 20px;
-            background: #1e1e1e;
-            color: #cccccc;
-        }
-        h1 { color: #4ec9b0; }
-        h2 { color: #569cd6; }
-        .feature {
-            margin: 20px 0;
-            padding: 15px;
-            background: #252526;
-            border-left: 3px solid #007acc;
-        }
-        code {
-            background: #1e1e1e;
-            padding: 2px 6px;
-            border-radius: 3px;
-            color: #ce9178;
-        }
-    </style>
-</head>
-<body>
-    <h1>🚀 Welcome to StackCodeSy</h1>
-    <p>Your secure, enterprise-grade code editor in the cloud.</p>
-
-    <div class="feature">
-        <h2>🔒 Security First</h2>
-        <p>Multi-layer security with terminal controls, extension restrictions, and full audit logging.</p>
-    </div>
-
-    <div class="feature">
-        <h2>🌐 Web-Based</h2>
-        <p>Access your development environment from anywhere, on any device.</p>
-    </div>
-
-    <div class="feature">
-        <h2>⚡ Full VSCode Power</h2>
-        <p>All the features you love from VSCode, running securely in your browser.</p>
-    </div>
-
-    <hr style="border-color: #3e3e42; margin: 30px 0;">
-    <p style="text-align: center; color: #858585;">
-        Powered by VSCode | Secured by StackCodeSy
-    </p>
-</body>
-</html>
-EOF
-
-# ============================================================================
-# Create stackcodesy user and directories
-# ============================================================================
+# Create stackcodesy user
 RUN useradd -m -u 1000 -s /bin/bash stackcodesy && \
-    mkdir -p /workspace /var/log/stackcodesy /opt/stackcodesy && \
+    mkdir -p /workspace /var/log/stackcodesy /opt/stackcodesy /opt/vscode-server && \
     chown -R stackcodesy:stackcodesy /workspace /var/log/stackcodesy /opt/stackcodesy /opt/vscode-server
 
-# ============================================================================
-# Copy StackCodeSy security scripts and extensions
-# ============================================================================
+# Copy compiled vscode-reh-web from builder
+COPY --from=builder --chown=stackcodesy:stackcodesy /build/vscode/vscode-reh-web-linux-x64 /opt/vscode-server
+
+# Copy security scripts
 COPY --chown=stackcodesy:stackcodesy resources/server/web/security/*.sh /opt/stackcodesy/security/
 RUN chmod +x /opt/stackcodesy/security/*.sh
 
+# Copy custom extensions
 COPY --chown=stackcodesy:stackcodesy extensions/ /opt/stackcodesy/extensions/
 
-# ============================================================================
 # Build custom authentication extension
-# ============================================================================
 WORKDIR /opt/stackcodesy/extensions/stackcodesy-auth
-
 RUN if [ -f package.json ]; then \
         echo "Building stackcodesy-auth extension..." && \
         npm install --production && \
         npm run compile && \
-        echo "Extension built successfully"; \
-    else \
-        echo "Warning: stackcodesy-auth extension not found"; \
+        echo "✅ Extension built successfully"; \
     fi
 
-# ============================================================================
 # Create server startup script
-# ============================================================================
 RUN cat > /opt/vscode-server/start-server.sh << 'EOF'
 #!/bin/bash
 set -e
 
 echo "=================================================="
 echo "  Starting StackCodeSy Server"
+echo "  (Compiled from VSCode source with branding)"
 echo "=================================================="
 
-# Server configuration
 HOST="${HOST:-0.0.0.0}"
 PORT="${PORT:-8080}"
 WORKSPACE="${STACKCODESY_WORKSPACE_DIR:-/workspace}"
 
-# Server arguments
 ARGS=(
     --host "$HOST"
     --port "$PORT"
@@ -193,12 +191,10 @@ ARGS=(
     --disable-telemetry
 )
 
-# Add custom extensions path if exists
 if [ -d "/opt/stackcodesy/extensions" ]; then
     ARGS+=(--extensions-dir /opt/stackcodesy/extensions)
 fi
 
-# User data directory
 USER_DATA_DIR="/home/stackcodesy/.stackcodesy-server"
 mkdir -p "$USER_DATA_DIR"
 ARGS+=(--user-data-dir "$USER_DATA_DIR")
@@ -209,18 +205,15 @@ echo "  Port: $PORT"
 echo "  Workspace: $WORKSPACE"
 echo "  User: $(whoami)"
 echo ""
+echo "Starting StackCodeSy Server..."
 
-# Start server
-echo "Starting VSCode Server..."
 exec /opt/vscode-server/bin/code-server "${ARGS[@]}" "$WORKSPACE"
 EOF
 
 RUN chmod +x /opt/vscode-server/start-server.sh && \
     chown stackcodesy:stackcodesy /opt/vscode-server/start-server.sh
 
-# ============================================================================
-# Environment variables with defaults
-# ============================================================================
+# Environment variables
 ENV NODE_ENV=production \
     HOST=0.0.0.0 \
     PORT=8080 \
@@ -233,23 +226,11 @@ ENV NODE_ENV=production \
     STACKCODESY_ENABLE_AUDIT_LOG=true \
     STACKCODESY_ENABLE_CSP=true
 
-# ============================================================================
-# Expose port
-# ============================================================================
 EXPOSE 8080
 
-# ============================================================================
-# Health check
-# ============================================================================
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
     CMD curl -f http://localhost:8080/ || exit 1
 
-# ============================================================================
-# Set working directory
-# ============================================================================
 WORKDIR /workspace
 
-# ============================================================================
-# Use security entrypoint
-# ============================================================================
 ENTRYPOINT ["/opt/stackcodesy/security/entrypoint.sh"]
