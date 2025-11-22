@@ -18,28 +18,17 @@ That's it! VSCode editor is now running in your browser.
 
 ## 📦 What happens during build?
 
-### Option A: Docker build from source (Dockerfile)
 The Dockerfile automatically:
-1. ✅ Clones VSCode source code from GitHub
-2. ✅ Applies StackCodeSy branding BEFORE compilation
-3. ✅ Compiles vscode-reh-web with custom branding (with C++20 support)
-4. ✅ Installs security scripts
-5. ✅ Builds custom authentication extension
-6. ✅ Configures everything
+1. ✅ Pulls code-server (VSCode for the web)
+2. ✅ Installs StackCodeSy security layers
+3. ✅ Configures custom entrypoint
+4. ✅ Sets up audit logging
+5. ✅ Applies StackCodeSy branding
 
-**Build time:** ~40-60 minutes (first time only - compiling from source)
-**Requirements:** Docker with 8GB+ RAM allocated
-**Note:** This is normal. VSCode is a large project with 7000+ files.
+**Build time:** ~2-5 minutes (first time)
+**Requirements:** Docker with 2GB+ RAM allocated
 
-### Option B: Pre-built binaries (Dockerfile.prebuilt)
-If you've already compiled locally using `./build-local.sh`:
-```bash
-docker build -f Dockerfile.prebuilt -t stackcodesy:latest .
-docker-compose up -d
-```
-
-**Build time:** ~2-3 minutes (uses pre-compiled tarball from dist/)
-**Requirements:** Must run `./build-local.sh` first to create the tarball
+StackCodeSy is built on [code-server](https://github.com/coder/code-server), which provides VSCode in the browser, with enterprise-grade security features added on top.
 
 ## 🔧 Environment Options
 
@@ -80,25 +69,6 @@ docker-compose -f docker-compose.prod.yml up -d
 - Full audit logging
 
 ## 🎯 Customization
-
-### Change VSCode version
-
-Edit any `docker-compose*.yml` file:
-
-```yaml
-services:
-  stackcodesy:
-    build:
-      args:
-        VSCODE_VERSION: 1.96.0  # Change this
-        VSCODE_QUALITY: stable
-```
-
-Then rebuild:
-```bash
-docker-compose build --no-cache
-docker-compose up -d
-```
 
 ### Configure security
 
@@ -229,10 +199,10 @@ docker-compose up -d
 docker-compose down
 ```
 
-**Update VSCode:**
-```yaml
-# Change version in docker-compose.yml
-VSCODE_VERSION: 1.96.0
+**Update code-server:**
+```bash
+# Pull latest code-server image
+docker pull codercom/code-server:latest
 
 # Rebuild
 docker-compose build --no-cache

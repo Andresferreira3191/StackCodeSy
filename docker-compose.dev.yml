@@ -7,9 +7,7 @@ services:
   stackcodesy-dev:
     build:
       context: .
-      dockerfile: Dockerfile
-      args:
-        VSCODE_VERSION: 1.95.3
+      dockerfile: Dockerfile.codeserver
     image: stackcodesy:dev
     container_name: stackcodesy-dev
     hostname: stackcodesy-dev

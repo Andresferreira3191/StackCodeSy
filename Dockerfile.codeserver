@@ -1,0 +1,248 @@
+# ============================================================================
+# StackCodeSy - Secure Web-based Code Editor
+# Based on code-server (VSCode in the browser)
+# ============================================================================
+FROM codercom/code-server:latest
+
+LABEL maintainer="StackCodeSy Team"
+LABEL description="Secure, multi-tenant web-based code editor with custom authentication and security layers"
+LABEL version="1.0.0"
+
+# ============================================================================
+# Install additional tools and dependencies
+# ============================================================================
+USER root
+
+RUN apt-get update && apt-get install -y \
+    curl \
+    wget \
+    git \
+    jq \
+    inotify-tools \
+    iptables \
+    net-tools \
+    supervisor \
+    sudo \
+    vim \
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean
+
+# ============================================================================
+# Create StackCodeSy directory structure
+# ============================================================================
+RUN mkdir -p \
+    /opt/stackcodesy/security \
+    /opt/stackcodesy/extensions \
+    /var/log/stackcodesy \
+    /workspace \
+    && chown -R coder:coder /opt/stackcodesy /var/log/stackcodesy /workspace
+
+# ============================================================================
+# Copy StackCodeSy security scripts
+# ============================================================================
+COPY --chown=coder:coder resources/server/web/security/*.sh /opt/stackcodesy/security/
+RUN chmod +x /opt/stackcodesy/security/*.sh
+
+# ============================================================================
+# Create StackCodeSy configuration
+# ============================================================================
+RUN mkdir -p /etc/stackcodesy
+
+COPY <<EOF /etc/stackcodesy/config.json
+{
+  "product": {
+    "nameShort": "StackCodeSy",
+    "nameLong": "StackCodeSy Editor",
+    "applicationName": "stackcodesy",
+    "dataFolderName": ".stackcodesy",
+    "version": "1.0.0"
+  },
+  "security": {
+    "terminal": {
+      "mode": "full",
+      "allowedCommands": []
+    },
+    "extensions": {
+      "mode": "full",
+      "whitelist": []
+    },
+    "filesystem": {
+      "diskQuotaMB": 0,
+      "maxFileSizeMB": 1000,
+      "blockedTypes": []
+    },
+    "network": {
+      "egressFilter": false,
+      "allowedDomains": [],
+      "blockAllOutbound": false
+    },
+    "audit": {
+      "enabled": true,
+      "logPath": "/var/log/stackcodesy/audit.log"
+    },
+    "csp": {
+      "enabled": false
+    }
+  }
+}
+EOF
+
+RUN chown coder:coder /etc/stackcodesy/config.json
+
+# ============================================================================
+# Create custom entrypoint that wraps code-server
+# ============================================================================
+COPY <<'EOF' /opt/stackcodesy/entrypoint.sh
+#!/bin/bash
+set -e
+
+echo "============================================"
+echo "  StackCodeSy - Secure Code Editor"
+echo "  Version: 1.0.0"
+echo "============================================"
+echo ""
+
+# ============================================================================
+# Load configuration from environment or use defaults
+# ============================================================================
+export STACKCODESY_TERMINAL_MODE="${STACKCODESY_TERMINAL_MODE:-full}"
+export STACKCODESY_EXTENSION_MODE="${STACKCODESY_EXTENSION_MODE:-full}"
+export STACKCODESY_DISK_QUOTA_MB="${STACKCODESY_DISK_QUOTA_MB:-0}"
+export STACKCODESY_MAX_FILE_SIZE_MB="${STACKCODESY_MAX_FILE_SIZE_MB:-1000}"
+export STACKCODESY_EGRESS_FILTER="${STACKCODESY_EGRESS_FILTER:-false}"
+export STACKCODESY_ENABLE_AUDIT_LOG="${STACKCODESY_ENABLE_AUDIT_LOG:-true}"
+export STACKCODESY_ENABLE_CSP="${STACKCODESY_ENABLE_CSP:-false}"
+
+echo "Configuration:"
+echo "  Terminal Mode: $STACKCODESY_TERMINAL_MODE"
+echo "  Extension Mode: $STACKCODESY_EXTENSION_MODE"
+echo "  Disk Quota: ${STACKCODESY_DISK_QUOTA_MB}MB"
+echo "  Audit Log: $STACKCODESY_ENABLE_AUDIT_LOG"
+echo ""
+
+# ============================================================================
+# Apply security layers (if scripts exist)
+# ============================================================================
+if [ -d "/opt/stackcodesy/security" ]; then
+    echo "Applying security layers..."
+
+    # Terminal security
+    if [ -f "/opt/stackcodesy/security/terminal-security.sh" ]; then
+        echo "  → Terminal security"
+        bash /opt/stackcodesy/security/terminal-security.sh
+    fi
+
+    # Extension marketplace control
+    if [ -f "/opt/stackcodesy/security/extension-marketplace.sh" ]; then
+        echo "  → Extension marketplace"
+        bash /opt/stackcodesy/security/extension-marketplace.sh
+    fi
+
+    # Filesystem security
+    if [ -f "/opt/stackcodesy/security/filesystem-security.sh" ]; then
+        echo "  → Filesystem security"
+        bash /opt/stackcodesy/security/filesystem-security.sh
+    fi
+
+    # Network security
+    if [ -f "/opt/stackcodesy/security/network-security.sh" ]; then
+        echo "  → Network security"
+        bash /opt/stackcodesy/security/network-security.sh
+    fi
+
+    # Audit logging
+    if [ -f "/opt/stackcodesy/security/audit-log.sh" ]; then
+        echo "  → Audit logging"
+        bash /opt/stackcodesy/security/audit-log.sh
+    fi
+
+    # CSP configuration
+    if [ -f "/opt/stackcodesy/security/csp-config.sh" ]; then
+        echo "  → CSP configuration"
+        bash /opt/stackcodesy/security/csp-config.sh
+    fi
+
+    echo "✅ Security layers applied"
+    echo ""
+fi
+
+# ============================================================================
+# Start code-server with StackCodeSy configuration
+# ============================================================================
+echo "Starting StackCodeSy Editor..."
+echo "Access at: http://localhost:${PORT:-8080}"
+echo ""
+
+# Set code-server arguments
+CODE_SERVER_ARGS=(
+    --bind-addr "0.0.0.0:${PORT:-8080}"
+    --user-data-dir "/home/coder/.stackcodesy"
+    --disable-telemetry
+)
+
+# Add auth if configured
+if [ "${STACKCODESY_REQUIRE_AUTH:-false}" = "true" ] && [ -n "${PASSWORD}" ]; then
+    CODE_SERVER_ARGS+=(--auth password)
+else
+    CODE_SERVER_ARGS+=(--auth none)
+fi
+
+# Add workspace
+CODE_SERVER_ARGS+=("${STACKCODESY_WORKSPACE_DIR:-/workspace}")
+
+# Execute code-server
+exec /usr/bin/code-server "${CODE_SERVER_ARGS[@]}"
+EOF
+
+RUN chmod +x /opt/stackcodesy/entrypoint.sh
+
+# ============================================================================
+# Configure code-server settings
+# ============================================================================
+USER coder
+WORKDIR /home/coder
+
+# Create user settings directory
+RUN mkdir -p /home/coder/.local/share/code-server/User
+
+# Add custom VSCode settings
+COPY <<EOF /home/coder/.local/share/code-server/User/settings.json
+{
+  "workbench.colorTheme": "Default Dark+",
+  "workbench.startupEditor": "readme",
+  "workbench.welcomePage.walkthroughs.openOnInstall": false,
+  "telemetry.telemetryLevel": "off",
+  "update.mode": "none",
+  "extensions.autoUpdate": false,
+  "window.menuBarVisibility": "toggle",
+  "editor.fontSize": 14,
+  "editor.tabSize": 2,
+  "editor.detectIndentation": true,
+  "editor.renderWhitespace": "selection",
+  "files.trimTrailingWhitespace": true,
+  "files.insertFinalNewline": true
+}
+EOF
+
+# ============================================================================
+# Environment variables
+# ============================================================================
+ENV STACKCODESY_VERSION="1.0.0"
+ENV STACKCODESY_WORKSPACE_DIR="/workspace"
+ENV PORT="8080"
+
+# ============================================================================
+# Expose port
+# ============================================================================
+EXPOSE 8080
+
+# ============================================================================
+# Health check
+# ============================================================================
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+    CMD curl -f http://localhost:8080/healthz || exit 1
+
+# ============================================================================
+# Use StackCodeSy entrypoint
+# ============================================================================
+ENTRYPOINT ["/opt/stackcodesy/entrypoint.sh"]
