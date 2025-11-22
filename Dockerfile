@@ -28,15 +28,44 @@ COPY code-server /build
 
 WORKDIR /build
 
+# Initialize git submodules (VSCode source)
+RUN echo "Initializing VSCode submodule..." && \
+    git submodule update --init --recursive --depth 1 && \
+    echo "✅ VSCode submodule initialized"
+
 # ============================================================================
-# Apply StackCodeSy branding to code-server
+# Apply StackCodeSy branding to VSCode product.json
 # ============================================================================
-RUN echo "Applying StackCodeSy branding..." && \
-    ls -la && \
-    # Update package.json with StackCodeSy branding
-    jq '.name = "stackcodesy" | .description = "StackCodeSy - Secure Code Editor" | .homepage = "https://github.com/yourorg/stackcodesy"' package.json > package.json.tmp && \
+RUN echo "Applying StackCodeSy branding to VSCode..." && \
+    cd lib/vscode && \
+    cp product.json product.json.original && \
+    jq '. + {
+        "nameShort": "StackCodeSy",
+        "nameLong": "StackCodeSy Editor",
+        "applicationName": "stackcodesy",
+        "dataFolderName": ".stackcodesy",
+        "win32MutexName": "stackcodesy",
+        "win32DirName": "StackCodeSy",
+        "win32NameVersion": "StackCodeSy",
+        "win32AppUserModelId": "stackcodesy.stackcodesy",
+        "win32ShellNameShort": "StackCodeSy",
+        "darwinBundleIdentifier": "com.stackcodesy.editor",
+        "linuxIconName": "stackcodesy",
+        "licenseUrl": "https://github.com/yourorg/stackcodesy/blob/main/LICENSE",
+        "reportIssueUrl": "https://github.com/yourorg/stackcodesy/issues",
+        "documentationUrl": "https://docs.stackcodesy.com"
+    }' product.json.original > product.json && \
+    cd ../.. && \
+    echo "✅ StackCodeSy branding applied to VSCode product.json"
+
+# Apply StackCodeSy branding to code-server package.json
+RUN echo "Applying StackCodeSy branding to code-server..." && \
+    jq '.name = "stackcodesy" |
+        .description = "StackCodeSy - Secure Code Editor" |
+        .homepage = "https://github.com/yourorg/stackcodesy"' \
+        package.json > package.json.tmp && \
     mv package.json.tmp package.json && \
-    echo "✅ StackCodeSy branding applied to package.json"
+    echo "✅ StackCodeSy branding applied to code-server package.json"
 
 # Install dependencies
 RUN echo "Installing dependencies..." && \
@@ -44,7 +73,8 @@ RUN echo "Installing dependencies..." && \
     echo "✅ Dependencies installed"
 
 # Build VSCode (this takes 30-40 minutes)
-RUN echo "Building VSCode..." && \
+ENV VERSION=0.0.0
+RUN echo "Building VSCode with StackCodeSy branding..." && \
     npm run build:vscode && \
     echo "✅ VSCode built successfully"
 
@@ -56,7 +86,8 @@ RUN echo "Building code-server..." && \
 # Create release bundle
 RUN echo "Creating release bundle..." && \
     npm run release && \
-    echo "✅ Release bundle created"
+    echo "✅ Release bundle created" && \
+    ls -lah release/
 
 # ============================================================================
 # Runtime stage
@@ -114,10 +145,15 @@ RUN ARCH="$(dpkg --print-architecture)" && \
     mkdir -p /etc/fixuid && \
     printf "user: coder\ngroup: coder\n" > /etc/fixuid/config.yml
 
-# Copy built code-server from builder
-COPY --from=builder /build/release /usr/lib/code-server
-RUN ln -s /usr/lib/code-server/out/node/entry.js /usr/bin/code-server && \
-    chmod +x /usr/bin/code-server
+# Copy built code-server release from builder
+COPY --from=builder --chown=coder:coder /build/release /usr/lib/code-server
+
+# Install code-server release
+RUN cd /usr/lib/code-server && \
+    npm install --omit=dev && \
+    ln -s /usr/lib/code-server/out/node/entry.js /usr/bin/code-server && \
+    chmod +x /usr/bin/code-server && \
+    chmod +x /usr/lib/code-server/out/node/entry.js
 
 # ============================================================================
 # Install StackCodeSy security layers
