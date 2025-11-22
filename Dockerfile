@@ -23,15 +23,13 @@ RUN apt-get update && apt-get install -y \
     rsync \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy code-server source
-COPY code-server /build
-
 WORKDIR /build
 
-# Initialize git submodules (VSCode source)
-RUN echo "Initializing VSCode submodule..." && \
-    git submodule update --init --recursive --depth 1 && \
-    echo "✅ VSCode submodule initialized"
+# Clone code-server source with submodules
+RUN echo "Cloning code-server with VSCode submodule..." && \
+    git clone --depth 1 --recurse-submodules --shallow-submodules \
+        https://github.com/coder/code-server.git . && \
+    echo "✅ code-server and VSCode cloned"
 
 # ============================================================================
 # Apply StackCodeSy branding to VSCode product.json
