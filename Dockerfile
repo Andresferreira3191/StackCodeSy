@@ -61,11 +61,12 @@ RUN echo "Installing dependencies..." && \
     echo "✅ Dependencies installed"
 
 # Build VSCode (this takes 30-40 minutes)
-# The build-vscode.sh script will now apply StackCodeSy branding automatically
+# MINIFY=false reduces memory usage significantly (2-4GB instead of 16GB)
 ENV VERSION=4.0.0
-ENV MINIFY=true
+ENV MINIFY=false
 RUN echo "Building VSCode with StackCodeSy branding..." && \
     echo "This will take 30-40 minutes..." && \
+    echo "Using MINIFY=false to reduce memory usage..." && \
     npm run build:vscode && \
     echo "✅ VSCode built successfully with StackCodeSy branding"
 
