@@ -7,7 +7,7 @@ services:
   stackcodesy:
     build:
       context: .
-      dockerfile: Dockerfile.codeserver
+      dockerfile: Dockerfile
     image: stackcodesy:latest
     container_name: stackcodesy-local
     hostname: stackcodesy

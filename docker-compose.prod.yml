@@ -7,7 +7,7 @@ services:
   stackcodesy-prod:
     build:
       context: .
-      dockerfile: Dockerfile.codeserver
+      dockerfile: Dockerfile
     image: stackcodesy:prod
     container_name: stackcodesy-prod-${STACKCODESY_USER_ID}
     hostname: stackcodesy-prod

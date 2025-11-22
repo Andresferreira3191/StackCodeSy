@@ -19,16 +19,16 @@ That's it! VSCode editor is now running in your browser.
 ## 📦 What happens during build?
 
 The Dockerfile automatically:
-1. ✅ Pulls code-server (VSCode for the web)
-2. ✅ Installs StackCodeSy security layers
-3. ✅ Configures custom entrypoint
-4. ✅ Sets up audit logging
-5. ✅ Applies StackCodeSy branding
+1. ✅ Compiles VSCode from source (30-40 min)
+2. ✅ Compiles code-server from source
+3. ✅ Applies StackCodeSy branding
+4. ✅ Installs StackCodeSy security layers
+5. ✅ Creates optimized release bundle
 
-**Build time:** ~2-5 minutes (first time)
-**Requirements:** Docker with 2GB+ RAM allocated
+**Build time:** ~40-50 minutes (first time - compiling from source)
+**Requirements:** Docker with 8GB+ RAM allocated
 
-StackCodeSy is built on [code-server](https://github.com/coder/code-server), which provides VSCode in the browser, with enterprise-grade security features added on top.
+StackCodeSy is built from [code-server](https://github.com/coder/code-server) source code with enterprise-grade security features and custom branding.
 
 ## 🔧 Environment Options
 

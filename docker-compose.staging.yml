@@ -7,7 +7,7 @@ services:
   stackcodesy-staging:
     build:
       context: .
-      dockerfile: Dockerfile.codeserver
+      dockerfile: Dockerfile
     image: stackcodesy:staging
     container_name: stackcodesy-staging
     hostname: stackcodesy-staging
