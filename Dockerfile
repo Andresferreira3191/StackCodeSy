@@ -39,22 +39,7 @@ RUN echo "Initializing VSCode submodule..." && \
 RUN echo "Applying StackCodeSy branding to VSCode..." && \
     cd lib/vscode && \
     cp product.json product.json.original && \
-    jq '. + {
-        "nameShort": "StackCodeSy",
-        "nameLong": "StackCodeSy Editor",
-        "applicationName": "stackcodesy",
-        "dataFolderName": ".stackcodesy",
-        "win32MutexName": "stackcodesy",
-        "win32DirName": "StackCodeSy",
-        "win32NameVersion": "StackCodeSy",
-        "win32AppUserModelId": "stackcodesy.stackcodesy",
-        "win32ShellNameShort": "StackCodeSy",
-        "darwinBundleIdentifier": "com.stackcodesy.editor",
-        "linuxIconName": "stackcodesy",
-        "licenseUrl": "https://github.com/yourorg/stackcodesy/blob/main/LICENSE",
-        "reportIssueUrl": "https://github.com/yourorg/stackcodesy/issues",
-        "documentationUrl": "https://docs.stackcodesy.com"
-    }' product.json.original > product.json && \
+    jq '. + {"nameShort": "StackCodeSy", "nameLong": "StackCodeSy Editor", "applicationName": "stackcodesy", "dataFolderName": ".stackcodesy", "win32MutexName": "stackcodesy", "win32DirName": "StackCodeSy", "win32NameVersion": "StackCodeSy", "win32AppUserModelId": "stackcodesy.stackcodesy", "win32ShellNameShort": "StackCodeSy", "darwinBundleIdentifier": "com.stackcodesy.editor", "linuxIconName": "stackcodesy", "licenseUrl": "https://github.com/yourorg/stackcodesy/blob/main/LICENSE", "reportIssueUrl": "https://github.com/yourorg/stackcodesy/issues", "documentationUrl": "https://docs.stackcodesy.com"}' product.json.original > product.json && \
     cd ../.. && \
     echo "✅ StackCodeSy branding applied to VSCode product.json"
 
