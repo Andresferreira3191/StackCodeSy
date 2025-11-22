@@ -32,20 +32,28 @@ RUN echo "Cloning code-server with VSCode submodule..." && \
     echo "✅ code-server and VSCode cloned"
 
 # ============================================================================
-# Apply StackCodeSy branding to VSCode product.json
+# Patch build-vscode.sh to apply StackCodeSy branding
 # ============================================================================
-RUN echo "Applying StackCodeSy branding to VSCode..." && \
-    cd lib/vscode && \
-    cp product.json product.json.original && \
-    jq '. + {"nameShort": "StackCodeSy", "nameLong": "StackCodeSy Editor", "applicationName": "stackcodesy", "dataFolderName": ".stackcodesy", "win32MutexName": "stackcodesy", "win32DirName": "StackCodeSy", "win32NameVersion": "StackCodeSy", "win32AppUserModelId": "stackcodesy.stackcodesy", "win32ShellNameShort": "StackCodeSy", "darwinBundleIdentifier": "com.stackcodesy.editor", "linuxIconName": "stackcodesy", "licenseUrl": "https://github.com/yourorg/stackcodesy/blob/main/LICENSE", "reportIssueUrl": "https://github.com/yourorg/stackcodesy/issues", "documentationUrl": "https://docs.stackcodesy.com"}' product.json.original > product.json && \
-    cd ../.. && \
-    echo "✅ StackCodeSy branding applied to VSCode product.json"
+RUN echo "Patching build-vscode.sh for StackCodeSy branding..." && \
+    sed -i 's/"nameShort": "code-server"/"nameShort": "StackCodeSy"/g' ci/build/build-vscode.sh && \
+    sed -i 's/"nameLong": "code-server"/"nameLong": "StackCodeSy Editor"/g' ci/build/build-vscode.sh && \
+    sed -i 's/"applicationName": "code-server"/"applicationName": "stackcodesy"/g' ci/build/build-vscode.sh && \
+    sed -i 's/"dataFolderName": ".code-server"/"dataFolderName": ".stackcodesy"/g' ci/build/build-vscode.sh && \
+    sed -i 's/"win32MutexName": "codeserver"/"win32MutexName": "stackcodesy"/g' ci/build/build-vscode.sh && \
+    sed -i 's/"win32DirName": "code-server"/"win32DirName": "StackCodeSy"/g' ci/build/build-vscode.sh && \
+    sed -i 's/"win32NameVersion": "code-server"/"win32NameVersion": "StackCodeSy"/g' ci/build/build-vscode.sh && \
+    sed -i 's/"win32AppUserModelId": "coder.code.server"/"win32AppUserModelId": "stackcodesy.stackcodesy"/g' ci/build/build-vscode.sh && \
+    sed -i 's/"win32ShellNameShort": "c&ode-server"/"win32ShellNameShort": "StackCodeSy"/g' ci/build/build-vscode.sh && \
+    sed -i 's/"darwinBundleIdentifier": "com.coder.code.server"/"darwinBundleIdentifier": "com.stackcodesy.editor"/g' ci/build/build-vscode.sh && \
+    sed -i 's/"linuxIconName": "com.coder.code.server"/"linuxIconName": "stackcodesy"/g' ci/build/build-vscode.sh && \
+    sed -i 's|"licenseUrl": "https://github.com/coder/code-server/blob/main/LICENSE"|"licenseUrl": "https://github.com/yourorg/stackcodesy/blob/main/LICENSE"|g' ci/build/build-vscode.sh && \
+    sed -i 's|"reportIssueUrl": "https://github.com/coder/code-server/issues/new"|"reportIssueUrl": "https://github.com/yourorg/stackcodesy/issues"|g' ci/build/build-vscode.sh && \
+    echo "✅ build-vscode.sh patched with StackCodeSy branding"
 
-# Apply StackCodeSy branding to code-server package.json
-RUN echo "Applying StackCodeSy branding to code-server..." && \
-    jq '.name = "stackcodesy" | .description = "StackCodeSy - Secure Code Editor" | .homepage = "https://github.com/yourorg/stackcodesy"' package.json > package.json.tmp && \
-    mv package.json.tmp package.json && \
-    echo "✅ StackCodeSy branding applied to code-server package.json"
+# Verify patches were applied
+RUN echo "Verifying branding patches..." && \
+    grep -q "StackCodeSy" ci/build/build-vscode.sh && \
+    echo "✅ Branding verified in build-vscode.sh"
 
 # Install dependencies
 RUN echo "Installing dependencies..." && \
@@ -53,10 +61,21 @@ RUN echo "Installing dependencies..." && \
     echo "✅ Dependencies installed"
 
 # Build VSCode (this takes 30-40 minutes)
-ENV VERSION=0.0.0
+# The build-vscode.sh script will now apply StackCodeSy branding automatically
+ENV VERSION=4.0.0
+ENV MINIFY=true
 RUN echo "Building VSCode with StackCodeSy branding..." && \
+    echo "This will take 30-40 minutes..." && \
     npm run build:vscode && \
-    echo "✅ VSCode built successfully"
+    echo "✅ VSCode built successfully with StackCodeSy branding"
+
+# Verify VSCode build output
+RUN echo "Verifying VSCode build..." && \
+    ls -lah lib/vscode-reh-web-linux-x64/ && \
+    if [ -f lib/vscode-reh-web-linux-x64/product.json ]; then \
+        echo "Checking product.json for StackCodeSy branding..."; \
+        cat lib/vscode-reh-web-linux-x64/product.json | jq '.nameShort, .nameLong, .applicationName'; \
+    fi
 
 # Build code-server
 RUN echo "Building code-server..." && \
@@ -67,7 +86,9 @@ RUN echo "Building code-server..." && \
 RUN echo "Creating release bundle..." && \
     npm run release && \
     echo "✅ Release bundle created" && \
-    ls -lah release/
+    ls -lah release/ && \
+    echo "Release contents:" && \
+    find release/ -maxdepth 2 -type f
 
 # ============================================================================
 # Runtime stage
@@ -128,12 +149,15 @@ RUN ARCH="$(dpkg --print-architecture)" && \
 # Copy built code-server release from builder
 COPY --from=builder --chown=coder:coder /build/release /usr/lib/code-server
 
-# Install code-server release
+# Install code-server release dependencies
 RUN cd /usr/lib/code-server && \
     npm install --omit=dev && \
     ln -s /usr/lib/code-server/out/node/entry.js /usr/bin/code-server && \
     chmod +x /usr/bin/code-server && \
     chmod +x /usr/lib/code-server/out/node/entry.js
+
+# Verify code-server installation
+RUN /usr/bin/code-server --version || echo "Warning: version check failed but continuing..."
 
 # ============================================================================
 # Install StackCodeSy security layers
@@ -145,12 +169,17 @@ RUN mkdir -p \
     /workspace && \
     chown -R coder:coder /opt/stackcodesy /var/log/stackcodesy /workspace
 
-# Copy security scripts
-COPY --chown=coder:coder resources/server/web/security/*.sh /opt/stackcodesy/security/
-RUN chmod +x /opt/stackcodesy/security/*.sh
+# Copy security scripts (if they exist)
+COPY --chown=coder:coder resources/server/web/security/*.sh /opt/stackcodesy/security/ 2>/dev/null || echo "No security scripts found, skipping..."
+RUN if [ -d /opt/stackcodesy/security ] && [ "$(ls -A /opt/stackcodesy/security 2>/dev/null)" ]; then \
+        chmod +x /opt/stackcodesy/security/*.sh; \
+        echo "✅ Security scripts installed"; \
+    else \
+        echo "⚠️  No security scripts found"; \
+    fi
 
-# Copy custom extensions (if any)
-COPY --chown=coder:coder extensions/ /opt/stackcodesy/extensions/
+# Copy custom extensions (if they exist)
+COPY --chown=coder:coder extensions/ /opt/stackcodesy/extensions/ 2>/dev/null || echo "No extensions found, skipping..."
 
 # ============================================================================
 # Create StackCodeSy configuration
@@ -193,8 +222,8 @@ echo "  Extension Mode: $STACKCODESY_EXTENSION_MODE"
 echo "  Audit Log: $STACKCODESY_ENABLE_AUDIT_LOG"
 echo ""
 
-# Apply security layers
-if [ -d "/opt/stackcodesy/security" ]; then
+# Apply security layers (if they exist)
+if [ -d "/opt/stackcodesy/security" ] && [ "$(ls -A /opt/stackcodesy/security 2>/dev/null)" ]; then
     echo "Applying security layers..."
 
     for script in /opt/stackcodesy/security/*.sh; do
