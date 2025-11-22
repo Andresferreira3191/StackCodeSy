@@ -169,17 +169,27 @@ RUN mkdir -p \
     /workspace && \
     chown -R coder:coder /opt/stackcodesy /var/log/stackcodesy /workspace
 
-# Copy security scripts (if they exist)
-COPY --chown=coder:coder resources/server/web/security/*.sh /opt/stackcodesy/security/ 2>/dev/null || echo "No security scripts found, skipping..."
-RUN if [ -d /opt/stackcodesy/security ] && [ "$(ls -A /opt/stackcodesy/security 2>/dev/null)" ]; then \
+# Copy security scripts and extensions from host (these directories must exist)
+COPY --chown=coder:coder resources/ /tmp/stackcodesy-resources/
+COPY --chown=coder:coder extensions/ /tmp/stackcodesy-extensions/
+
+# Install security scripts if they exist
+RUN if [ -d /tmp/stackcodesy-resources/server/web/security ] && [ "$(ls -A /tmp/stackcodesy-resources/server/web/security/*.sh 2>/dev/null)" ]; then \
+        cp /tmp/stackcodesy-resources/server/web/security/*.sh /opt/stackcodesy/security/; \
         chmod +x /opt/stackcodesy/security/*.sh; \
+        chown -R coder:coder /opt/stackcodesy/security; \
         echo "✅ Security scripts installed"; \
     else \
-        echo "⚠️  No security scripts found"; \
-    fi
-
-# Copy custom extensions (if they exist)
-COPY --chown=coder:coder extensions/ /opt/stackcodesy/extensions/ 2>/dev/null || echo "No extensions found, skipping..."
+        echo "⚠️  No security scripts found - skipping"; \
+    fi && \
+    if [ -d /tmp/stackcodesy-extensions ] && [ "$(ls -A /tmp/stackcodesy-extensions 2>/dev/null)" ]; then \
+        cp -r /tmp/stackcodesy-extensions/* /opt/stackcodesy/extensions/; \
+        chown -R coder:coder /opt/stackcodesy/extensions; \
+        echo "✅ Extensions installed"; \
+    else \
+        echo "⚠️  No extensions found - skipping"; \
+    fi && \
+    rm -rf /tmp/stackcodesy-resources /tmp/stackcodesy-extensions
 
 # ============================================================================
 # Create StackCodeSy configuration
