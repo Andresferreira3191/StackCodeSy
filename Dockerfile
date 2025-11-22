@@ -47,27 +47,13 @@ WORKDIR /build/vscode
 RUN echo "Applying StackCodeSy branding..." && \
     # Backup original
     cp product.json product.json.original && \
-    # Apply branding
-    jq '. + {
-        "nameShort": "StackCodeSy",
-        "nameLong": "StackCodeSy Editor",
-        "applicationName": "stackcodesy",
-        "dataFolderName": ".stackcodesy",
-        "serverDataFolderName": ".stackcodesy-server",
-        "darwinBundleIdentifier": "com.stackcodesy.editor",
-        "linuxIconName": "stackcodesy",
-        "reportIssueUrl": "https://github.com/yourorg/stackcodesy/issues",
-        "documentationUrl": "https://docs.stackcodesy.com",
-        "requestFeatureUrl": "https://github.com/yourorg/stackcodesy/issues/new"
-    }' product.json > product.json.tmp && \
+    # Apply branding (single line to avoid parsing issues)
+    jq '. + {"nameShort": "StackCodeSy", "nameLong": "StackCodeSy Editor", "applicationName": "stackcodesy", "dataFolderName": ".stackcodesy", "serverDataFolderName": ".stackcodesy-server", "darwinBundleIdentifier": "com.stackcodesy.editor", "linuxIconName": "stackcodesy", "reportIssueUrl": "https://github.com/yourorg/stackcodesy/issues", "documentationUrl": "https://docs.stackcodesy.com", "requestFeatureUrl": "https://github.com/yourorg/stackcodesy/issues/new"}' product.json > product.json.tmp && \
     mv product.json.tmp product.json && \
     echo "✅ Branding applied to product.json" && \
     # Also update package.json
     if [ -f package.json ]; then \
-        jq '.displayName = "StackCodeSy" |
-            .name = "stackcodesy" |
-            .description = "StackCodeSy - Secure Code Editor"' \
-            package.json > package.json.tmp && \
+        jq '.displayName = "StackCodeSy" | .name = "stackcodesy" | .description = "StackCodeSy - Secure Code Editor"' package.json > package.json.tmp && \
         mv package.json.tmp package.json && \
         echo "✅ Branding applied to package.json"; \
     fi
