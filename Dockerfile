@@ -95,8 +95,12 @@ Powered by VSCode | Secured by StackCodeSy
 EOF
 
 # ============================================================================
-# Install dependencies
+# Install dependencies with C++20 support
 # ============================================================================
+# Set C++ standard to C++20 for native modules
+ENV CXXFLAGS="-std=c++20"
+ENV npm_config_cxx="/usr/bin/g++"
+
 RUN echo "Installing dependencies..." && \
     npm ci && \
     echo "✅ Dependencies installed"

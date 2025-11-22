@@ -174,6 +174,11 @@ echo ""
 echo -e "${YELLOW}[5/8] Installing dependencies...${NC}"
 echo "This may take 5-10 minutes..."
 cd "$VSCODE_DIR"
+
+# Set C++ standard to C++20 for native modules (required by Node.js v20+)
+export CXXFLAGS="-std=c++20"
+export npm_config_cxx="/usr/bin/g++"
+
 npm ci
 echo -e "${GREEN}✓ Dependencies installed${NC}"
 echo ""
