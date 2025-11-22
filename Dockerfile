@@ -45,10 +45,7 @@ RUN echo "Applying StackCodeSy branding to VSCode..." && \
 
 # Apply StackCodeSy branding to code-server package.json
 RUN echo "Applying StackCodeSy branding to code-server..." && \
-    jq '.name = "stackcodesy" |
-        .description = "StackCodeSy - Secure Code Editor" |
-        .homepage = "https://github.com/yourorg/stackcodesy"' \
-        package.json > package.json.tmp && \
+    jq '.name = "stackcodesy" | .description = "StackCodeSy - Secure Code Editor" | .homepage = "https://github.com/yourorg/stackcodesy"' package.json > package.json.tmp && \
     mv package.json.tmp package.json && \
     echo "✅ StackCodeSy branding applied to code-server package.json"
 
