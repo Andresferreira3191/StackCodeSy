@@ -23,15 +23,16 @@ RUN apt-get update && apt-get install -y \
     rsync \
     && rm -rf /var/lib/apt/lists/*
 
-WORKDIR /build
-
 # Copy code-server source
-COPY code-server/ /build/
+COPY code-server /build
+
+WORKDIR /build
 
 # ============================================================================
 # Apply StackCodeSy branding to code-server
 # ============================================================================
 RUN echo "Applying StackCodeSy branding..." && \
+    ls -la && \
     # Update package.json with StackCodeSy branding
     jq '.name = "stackcodesy" | .description = "StackCodeSy - Secure Code Editor" | .homepage = "https://github.com/yourorg/stackcodesy"' package.json > package.json.tmp && \
     mv package.json.tmp package.json && \
