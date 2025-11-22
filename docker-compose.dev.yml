@@ -7,7 +7,7 @@ services:
   stackcodesy-dev:
     build:
       context: .
-      dockerfile: docker/Dockerfile.build
+      dockerfile: Dockerfile.prebuilt
       args:
         VSCODE_VERSION: 1.95.3
     image: stackcodesy:dev

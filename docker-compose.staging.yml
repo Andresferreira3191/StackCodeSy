@@ -7,7 +7,10 @@ services:
   stackcodesy-staging:
     build:
       context: .
-      dockerfile: docker/Dockerfile
+      args:
+        VSCODE_VERSION: 1.95.3
+        VSCODE_QUALITY: stable
+      dockerfile: Dockerfile.prebuilt
     image: stackcodesy:staging
     container_name: stackcodesy-staging
     hostname: stackcodesy-staging

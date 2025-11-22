@@ -147,15 +147,15 @@ echo ""
 # Switch to stackcodesy user and start server
 cd "$WORKSPACE_DIR"
 
-# Check if we have vscode-reh-web binary
-if [ -f "/opt/stackcodesy/vscode-reh-web/server.sh" ]; then
-    log_step "Using vscode-reh-web server"
-    exec su stackcodesy -c "/opt/stackcodesy/vscode-reh-web/server.sh"
-elif [ -f "/opt/stackcodesy/bin/code-server-web" ]; then
-    log_step "Using code-server-web"
-    exec su stackcodesy -c "/opt/stackcodesy/bin/code-server-web --host ${HOST:-0.0.0.0} --port ${PORT:-8080}"
+# Check if we have VSCode server
+if [ -f "/opt/vscode-server/start-server.sh" ]; then
+    log_step "Using VSCode Server (official)"
+    exec su stackcodesy -c "/opt/vscode-server/start-server.sh"
+elif [ -f "/opt/vscode-server/bin/code-server" ]; then
+    log_step "Using VSCode Server binary directly"
+    exec su stackcodesy -c "/opt/vscode-server/bin/code-server --host ${HOST:-0.0.0.0} --port ${PORT:-8080} --without-connection-token ${WORKSPACE_DIR}"
 else
     log_error "No VSCode server found!"
-    log_error "Expected server at /opt/stackcodesy/vscode-reh-web/server.sh or /opt/stackcodesy/bin/code-server-web"
+    log_error "Expected server at /opt/vscode-server/"
     exit 1
 fi
