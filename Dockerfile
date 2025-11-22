@@ -136,8 +136,18 @@ RUN apt-get update && apt-get install -y \
     && rm -rf /var/lib/apt/lists/* \
     && apt-get clean
 
-# Create stackcodesy user
-RUN useradd -m -u 1000 -s /bin/bash stackcodesy && \
+# Create stackcodesy user (handle if UID 1000 already exists)
+RUN if id -u 1000 >/dev/null 2>&1; then \
+        # User with UID 1000 exists (likely 'node'), rename it
+        existing_user=$(id -un 1000); \
+        if [ "$existing_user" != "stackcodesy" ]; then \
+            usermod -l stackcodesy $existing_user; \
+            groupmod -n stackcodesy $(id -gn 1000) 2>/dev/null || true; \
+        fi; \
+    else \
+        # Create new user
+        useradd -m -u 1000 -s /bin/bash stackcodesy; \
+    fi && \
     mkdir -p /workspace /var/log/stackcodesy /opt/stackcodesy /opt/vscode-server && \
     chown -R stackcodesy:stackcodesy /workspace /var/log/stackcodesy /opt/stackcodesy /opt/vscode-server
 
