@@ -99,17 +99,30 @@ ENV NODE_OPTIONS="--max-old-space-size=8192"
 RUN echo "Starting compilation of vscode-reh-web-linux-x64..." && \
     echo "This will take 30-50 minutes..." && \
     npm run gulp vscode-reh-web-linux-x64 && \
-    echo "✅ Compilation completed successfully"
+    echo "✅ Compilation completed successfully" && \
+    echo "Checking build output location..." && \
+    ls -la ../ && \
+    echo "---" && \
+    find .. -maxdepth 2 -name "*vscode-reh-web*" -type d
 
-# Verify build output
+# Verify build output (check both current dir and parent dir)
 RUN if [ -d "vscode-reh-web-linux-x64" ]; then \
-        echo "✅ Build successful!"; \
-        echo "Size: $(du -sh vscode-reh-web-linux-x64 | cut -f1)"; \
-        ls -lah vscode-reh-web-linux-x64/; \
+        echo "✅ Build found in current directory!"; \
+        BUILD_DIR="vscode-reh-web-linux-x64"; \
+    elif [ -d "../vscode-reh-web-linux-x64" ]; then \
+        echo "✅ Build found in parent directory!"; \
+        mv ../vscode-reh-web-linux-x64 ./vscode-reh-web-linux-x64; \
+        BUILD_DIR="vscode-reh-web-linux-x64"; \
     else \
         echo "❌ ERROR: Build directory not found!"; \
+        echo "Contents of current directory:"; \
+        ls -lah; \
+        echo "Contents of parent directory:"; \
+        ls -lah ../; \
         exit 1; \
-    fi
+    fi && \
+    echo "Size: $(du -sh $BUILD_DIR | cut -f1)" && \
+    ls -lah $BUILD_DIR/
 
 # ============================================================================
 # Stage 2: Runtime
