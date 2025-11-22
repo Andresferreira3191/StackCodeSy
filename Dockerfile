@@ -99,30 +99,20 @@ ENV NODE_OPTIONS="--max-old-space-size=8192"
 RUN echo "Starting compilation of vscode-reh-web-linux-x64..." && \
     echo "This will take 30-50 minutes..." && \
     npm run gulp vscode-reh-web-linux-x64 && \
-    echo "✅ Compilation completed successfully" && \
-    echo "Checking build output location..." && \
-    ls -la ../ && \
-    echo "---" && \
-    find .. -maxdepth 2 -name "*vscode-reh-web*" -type d
+    echo "✅ Compilation completed successfully"
 
-# Verify build output (check both current dir and parent dir)
-RUN if [ -d "vscode-reh-web-linux-x64" ]; then \
-        echo "✅ Build found in current directory!"; \
-        BUILD_DIR="vscode-reh-web-linux-x64"; \
-    elif [ -d "../vscode-reh-web-linux-x64" ]; then \
-        echo "✅ Build found in parent directory!"; \
-        mv ../vscode-reh-web-linux-x64 ./vscode-reh-web-linux-x64; \
-        BUILD_DIR="vscode-reh-web-linux-x64"; \
+# Move build output to expected location
+# VSCode outputs to ../vscode-reh-web-linux-x64 (parent of vscode repo)
+RUN if [ -d "../vscode-reh-web-linux-x64" ]; then \
+        echo "✅ Build found at /build/vscode-reh-web-linux-x64"; \
+        echo "Size: $(du -sh ../vscode-reh-web-linux-x64 | cut -f1)"; \
+        ls -lah ../vscode-reh-web-linux-x64/; \
     else \
-        echo "❌ ERROR: Build directory not found!"; \
-        echo "Contents of current directory:"; \
-        ls -lah; \
+        echo "❌ ERROR: Build directory not found at ../vscode-reh-web-linux-x64"; \
         echo "Contents of parent directory:"; \
         ls -lah ../; \
         exit 1; \
-    fi && \
-    echo "Size: $(du -sh $BUILD_DIR | cut -f1)" && \
-    ls -lah $BUILD_DIR/
+    fi
 
 # ============================================================================
 # Stage 2: Runtime
@@ -165,7 +155,8 @@ RUN if id -u 1000 >/dev/null 2>&1; then \
     chown -R stackcodesy:stackcodesy /workspace /var/log/stackcodesy /opt/stackcodesy /opt/vscode-server
 
 # Copy compiled vscode-reh-web from builder
-COPY --from=builder --chown=stackcodesy:stackcodesy /build/vscode/vscode-reh-web-linux-x64 /opt/vscode-server
+# Build output is at /build/vscode-reh-web-linux-x64 (parent of vscode repo)
+COPY --from=builder --chown=stackcodesy:stackcodesy /build/vscode-reh-web-linux-x64 /opt/vscode-server
 
 # Copy security scripts
 COPY --chown=stackcodesy:stackcodesy resources/server/web/security/*.sh /opt/stackcodesy/security/
