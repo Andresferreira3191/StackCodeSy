@@ -48,7 +48,8 @@ RUN echo "Patching build-vscode.sh for StackCodeSy branding..." && \
     sed -i 's/"linuxIconName": "com.coder.code.server"/"linuxIconName": "stackcodesy"/g' ci/build/build-vscode.sh && \
     sed -i 's|"licenseUrl": "https://github.com/coder/code-server/blob/main/LICENSE"|"licenseUrl": "https://github.com/yourorg/stackcodesy/blob/main/LICENSE"|g' ci/build/build-vscode.sh && \
     sed -i 's|"reportIssueUrl": "https://github.com/coder/code-server/issues/new"|"reportIssueUrl": "https://github.com/yourorg/stackcodesy/issues"|g' ci/build/build-vscode.sh && \
-    echo "✅ build-vscode.sh patched with StackCodeSy branding"
+    sed -i 's/--max-old-space-size=16384/--max-old-space-size=4096/g' ci/build/build-vscode.sh && \
+    echo "✅ build-vscode.sh patched with StackCodeSy branding and reduced memory usage"
 
 # Verify patches were applied
 RUN echo "Verifying branding patches..." && \
