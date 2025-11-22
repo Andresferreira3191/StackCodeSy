@@ -7,10 +7,9 @@ services:
   stackcodesy-prod:
     build:
       context: .
+      dockerfile: Dockerfile
       args:
         VSCODE_VERSION: 1.95.3
-        VSCODE_QUALITY: stable
-      dockerfile: Dockerfile.prebuilt
     image: stackcodesy:prod
     container_name: stackcodesy-prod-${STACKCODESY_USER_ID}
     hostname: stackcodesy-prod

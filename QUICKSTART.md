@@ -18,16 +18,28 @@ That's it! VSCode editor is now running in your browser.
 
 ## 📦 What happens during build?
 
+### Option A: Docker build from source (Dockerfile)
 The Dockerfile automatically:
 1. ✅ Clones VSCode source code from GitHub
 2. ✅ Applies StackCodeSy branding BEFORE compilation
-3. ✅ Compiles vscode-reh-web with custom branding
+3. ✅ Compiles vscode-reh-web with custom branding (with C++20 support)
 4. ✅ Installs security scripts
 5. ✅ Builds custom authentication extension
 6. ✅ Configures everything
 
 **Build time:** ~40-60 minutes (first time only - compiling from source)
+**Requirements:** Docker with 8GB+ RAM allocated
 **Note:** This is normal. VSCode is a large project with 7000+ files.
+
+### Option B: Pre-built binaries (Dockerfile.prebuilt)
+If you've already compiled locally using `./build-local.sh`:
+```bash
+docker build -f Dockerfile.prebuilt -t stackcodesy:latest .
+docker-compose up -d
+```
+
+**Build time:** ~2-3 minutes (uses pre-compiled tarball from dist/)
+**Requirements:** Must run `./build-local.sh` first to create the tarball
 
 ## 🔧 Environment Options
 
