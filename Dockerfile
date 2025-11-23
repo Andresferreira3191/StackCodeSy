@@ -153,7 +153,7 @@ COPY --from=builder --chown=coder:coder /build/release /usr/lib/code-server
 
 # Install code-server release dependencies
 RUN cd /usr/lib/code-server && \
-    npm install --omit=dev && \
+    npm install --omit=dev --unsafe-perm && \
     ln -s /usr/lib/code-server/out/node/entry.js /usr/bin/code-server && \
     chmod +x /usr/bin/code-server && \
     chmod +x /usr/lib/code-server/out/node/entry.js
